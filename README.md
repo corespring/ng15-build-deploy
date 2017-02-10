@@ -14,5 +14,7 @@ ng15bd
 ## options
 
 `--host` the pie catalog host default: `pie-catalog-demo.herokuapp.com`.
+
 `--skip` skip this repo - can have multiple skip flags in the command
+
 `--force` if the catalog already has the repo uploaded it wont deploy by default. this forces a build and deploy.
