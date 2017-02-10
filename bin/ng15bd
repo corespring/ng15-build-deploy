@@ -17,6 +17,7 @@ const host = args.host || 'pie-catalog-demo.herokuapp.com';
 const force = args.force || false;
 
 const skip = args.skip ? (Array.isArray(args.skip) ? args.skip : [args.skip]) : [];
+const only = args.only ? (Array.isArray(args.only) ? args.only : [args.only]) : [];
 
 let asyncFilter = (arr, fn) => {
   let p = arr.map(v => {
@@ -36,13 +37,17 @@ let alreadyDeployed = (dir) => {
       let n = basename(dir);
       fetch(`http://${host}/api/element/corespring/${n}`)
         .then(r => {
+          console.log('status for: ', n, r.status);
           if (r.status === 200) {
             return resolve(true);
           } else {
             return resolve(false);
           }
         })
-        .catch(e => reject(e));
+        .catch(e => {
+          console.error('error calling api for: ', n);
+          reject(e)
+        });
     }
   });
 }
@@ -50,6 +55,7 @@ let alreadyDeployed = (dir) => {
 let getDir = (d) => resolve(join(rootDir, d));
 
 let run = (name, args) => {
+  console.log(`[run]: ${name} ${args.join(' ')} ...`);
   let r = spawnSync(name, args);
 
   if (r.error) {
@@ -61,6 +67,7 @@ let run = (name, args) => {
     throw new Error('cmd failed with exit code: ', r.status);
   }
   console.log(r.stdout.toString());
+  console.log('--');
 }
 
 let buildAndDeploy = (d) => {
@@ -72,42 +79,33 @@ let buildAndDeploy = (d) => {
     process.chdir(fullDir);
     run(`pie`, [`clean`]);
     run('pie', ['pack', '--dir', '../..', '--createArchive', '-a', 'catalog']);
-    run('curl', ['--request', 'POST', '--data-binary', '"@pie-item.tar.gz"', `http://${host}/store/ingest/corespring/${d}/0.0.1`]);
+    run('curl', ['--request', 'POST', '--data-binary', `@${fullDir}/pie-item.tar.gz`, `http://${host}/store/ingest/corespring/${d}/0.0.1`]);
     process.chdir(rootDir);
     resolve(d);
   });
 }
 
 let skipped = (repoDir) => skip.indexOf(repoDir) === -1;
+let isInOnly = repoDir => only.length === 0 || only.indexOf(repoDir) !== -1;
 
 let files = fs.readdirSync(resolve(rootDir));
 let filtered = files
   .filter(n => n.endsWith('ng15'))
-  .filter(skipped);
+  .filter(skipped)
+  .filter(isInOnly);
 
 console.log('filtered: ', filtered);
 asyncFilter(filtered, alreadyDeployed)
   .then(dirs => {
     console.log('to deploy: ', dirs);
 
-    return mapSeries(dirs, (d) => {
-      return buildAndDeploy(d);
-    })
+    if (!args.dryRun) {
+      return mapSeries(dirs, (d) => {
+        return buildAndDeploy(d);
+      });
+    }
   })
   .then(r => {
     console.log('done: ', r);
   })
   .catch(e => console.error(e));
-//  .filter(alreadyDeployed)
-
-// console.log(filtered);
-
-// let promises = filtered.map(d => deploy(resolve(join(dir, d))));
-
-// Promise.all(promises)
-//   .then(results => {
-//     console.log(results);
-//   })
-//   .catch(e => {
-//     console.error(e);
-//   });
