@@ -1,0 +1,21 @@
+{
+  "name": "ng15-build-deploy",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "ng15bd": "bin/ng15bd"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bluebird": "^3.4.7",
+    "fs-extra": "^2.0.0",
+    "lodash": "^4.17.4",
+    "minimist": "^1.2.0",
+    "node-fetch": "^1.6.3"
+  }
+}

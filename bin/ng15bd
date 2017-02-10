@@ -1,0 +1,113 @@
+#!/usr/bin/env node
+
+const minimist = require('minimist');
+const fs = require('fs-extra');
+const { join, resolve, basename } = require('path');
+const _ = require('lodash');
+const { spawnSync } = require('child_process');
+const fetch = require('node-fetch');
+const { mapSeries } = require('bluebird');
+
+let args = minimist(process.argv.slice(2));
+console.log(args);
+
+const rootDir = resolve(args.dir || process.cwd());
+const host = args.host || 'pie-catalog-demo.herokuapp.com';
+///api/element/PieElements/corespring-placement-ordering/'
+const force = args.force || false;
+
+const skip = args.skip ? (Array.isArray(args.skip) ? args.skip : [args.skip]) : [];
+
+let asyncFilter = (arr, fn) => {
+  let p = arr.map(v => {
+    return fn(v)
+      .then(filterResult => ({ value: v, filter: filterResult }));
+  });
+
+  return Promise.all(p)
+    .then(results => results.filter(r => !r.filter).map(r => r.value));
+}
+
+let alreadyDeployed = (dir) => {
+  return new Promise((resolve, reject) => {
+    if (force) {
+      resolve(false);
+    } else {
+      let n = basename(dir);
+      fetch(`http://${host}/api/element/corespring/${n}`)
+        .then(r => {
+          if (r.status === 200) {
+            return resolve(true);
+          } else {
+            return resolve(false);
+          }
+        })
+        .catch(e => reject(e));
+    }
+  });
+}
+
+let getDir = (d) => resolve(join(rootDir, d));
+
+let run = (name, args) => {
+  let r = spawnSync(name, args);
+
+  if (r.error) {
+    throw new Error(r.error);
+  }
+
+  if (r.status !== 0) {
+    console.error(r.stderr.toString());
+    throw new Error('cmd failed with exit code: ', r.status);
+  }
+  console.log(r.stdout.toString());
+}
+
+let buildAndDeploy = (d) => {
+  console.log('[buildAndDeploy], d:', d);
+  return new Promise((resolve, reject) => {
+    console.log('[buildAndDeploy]', d);
+    let fullDir = `${getDir(d)}/docs/demo`;
+    console.log(fullDir);
+    process.chdir(fullDir);
+    run(`pie`, [`clean`]);
+    run('pie', ['pack', '--dir', '../..', '--createArchive', '-a', 'catalog']);
+    run('curl', ['--request', 'POST', '--data-binary', '"@pie-item.tar.gz"', `http://${host}/store/ingest/corespring/${d}/0.0.1`]);
+    process.chdir(rootDir);
+    resolve(d);
+  });
+}
+
+let skipped = (repoDir) => skip.indexOf(repoDir) === -1;
+
+let files = fs.readdirSync(resolve(rootDir));
+let filtered = files
+  .filter(n => n.endsWith('ng15'))
+  .filter(skipped);
+
+console.log('filtered: ', filtered);
+asyncFilter(filtered, alreadyDeployed)
+  .then(dirs => {
+    console.log('to deploy: ', dirs);
+
+    return mapSeries(dirs, (d) => {
+      return buildAndDeploy(d);
+    })
+  })
+  .then(r => {
+    console.log('done: ', r);
+  })
+  .catch(e => console.error(e));
+//  .filter(alreadyDeployed)
+
+// console.log(filtered);
+
+// let promises = filtered.map(d => deploy(resolve(join(dir, d))));
+
+// Promise.all(promises)
+//   .then(results => {
+//     console.log(results);
+//   })
+//   .catch(e => {
+//     console.error(e);
+//   });
